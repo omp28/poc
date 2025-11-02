@@ -11,6 +11,15 @@ fi
 
 CADDY_API="http://127.0.0.1:2020/config/apps/http/servers/srv0/routes"
 
+# 🧠 Check if route already exists for this branch
+EXISTS=$(curl -s "$CADDY_API" | jq -r '.[]?.match[]?.host[]?' 2>/dev/null | grep -Fx "$BRANCH.localhost" || true)
+
+if [ -n "$EXISTS" ]; then
+  echo "✅ Route for $BRANCH.localhost already exists — skipping creation."
+  exit 0
+fi
+
+# 🏗️ Create route JSON
 ROUTE_JSON=$(cat <<EOF
 {
   "match": [
@@ -26,9 +35,9 @@ ROUTE_JSON=$(cat <<EOF
 EOF
 )
 
-echo "🔁 Adding route for $BRANCH.localhost → $PORT"
+echo "🔁 Adding new route for $BRANCH.localhost → $PORT"
 
-# ✅ Correct: POST a single object (no array wrapper)
+# 🧩 Add route via Caddy API
 curl -s -X POST "$CADDY_API" \
      -H "Content-Type: application/json" \
      -d "$ROUTE_JSON" \
