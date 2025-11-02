@@ -1,0 +1,10 @@
+{
+  email admin@abc.com
+  admin 127.0.0.1:2020
+  auto_https off
+}
+
+:8080 {
+  reverse_proxy /* 127.0.0.1:4000
+}
+
