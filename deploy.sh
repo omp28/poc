@@ -40,9 +40,9 @@ docker run -d \
   --name "app1_$BRANCH" \
   "app1:$BRANCH"
 
-echo "✅ $BRANCH deployed at http://localhost:$PORT"
+echo "✅ $BRANCH deployed at http://<server-ip>:$PORT"
 
-# Register route in Caddy
+# Register route in Caddy (path-based)
 bash "$BASE_DIR/caddy/update_routes.sh" "$BRANCH" "$PORT"
 
 # Set default route if branch is main

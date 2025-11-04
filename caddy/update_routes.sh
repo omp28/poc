@@ -12,18 +12,18 @@ fi
 CADDY_API="http://127.0.0.1:2020/config/apps/http/servers/srv0/routes"
 
 # 🧠 Check if route already exists for this branch
-EXISTS=$(curl -s "$CADDY_API" | jq -r '.[]?.match[]?.host[]?' 2>/dev/null | grep -Fx "$BRANCH.localhost" || true)
+EXISTS=$(curl -s "$CADDY_API" | jq -r '.[].match[].path[]?' 2>/dev/null | grep -Fx "/$BRANCH/*" || true)
 
 if [ -n "$EXISTS" ]; then
-  echo "✅ Route for $BRANCH.localhost already exists — skipping creation."
+  echo "✅ Route for /$BRANCH/* already exists — skipping creation."
   exit 0
 fi
 
-# 🏗️ Create route JSON
+# 🏗️ Create route JSON (path-based)
 ROUTE_JSON=$(cat <<EOF
 {
   "match": [
-    { "host": ["$BRANCH.localhost"] }
+    { "path": ["/$BRANCH/*"] }
   ],
   "handle": [
     {
@@ -35,7 +35,7 @@ ROUTE_JSON=$(cat <<EOF
 EOF
 )
 
-echo "🔁 Adding new route for $BRANCH.localhost → $PORT"
+echo "🔁 Adding new route for /$BRANCH/* → $PORT"
 
 # 🧩 Add route via Caddy API
 curl -s -X POST "$CADDY_API" \
@@ -43,4 +43,4 @@ curl -s -X POST "$CADDY_API" \
      -d "$ROUTE_JSON" \
   || { echo "⚠️ Failed to add route in Caddy"; exit 1; }
 
-echo "✅ Route added: http://$BRANCH.localhost:8080"
+echo "✅ Route added: http://<server-ip>:8080/$BRANCH/"
