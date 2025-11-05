@@ -10,7 +10,7 @@ fi
 REPO_URL="https://github.com/omp28/app1.git"
 PORT_BASE=4000
 BASE_DIR="/home/omkumar.patel/nomad-config"
-TMP_DIR="/tmp/$BRANCH"
+REPO_DIR="/home/omkumar.patel/repos/app1"  # Persistent repo location
 
 # Generate deterministic port
 HASH=$(echo -n "$BRANCH" | md5sum | cut -c1-3)
@@ -32,13 +32,26 @@ if docker ps -a --format '{{.Names}}' | grep -q "^app1_$BRANCH$"; then
   docker rm "app1_$BRANCH" >/dev/null 2>&1 || true
 fi
 
-# Clean and clone
-rm -rf "$TMP_DIR"
-git clone --depth=1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR"
+# Clone repo if not exists, otherwise fetch and checkout
+if [ ! -d "$REPO_DIR" ]; then
+  echo "📦 Cloning repository for the first time..."
+  mkdir -p "$(dirname "$REPO_DIR")"
+  git clone "$REPO_URL" "$REPO_DIR"
+else
+  echo "📦 Repository exists, fetching latest changes..."
+  cd "$REPO_DIR"
+  git fetch origin
+fi
 
-cd "$TMP_DIR"
+cd "$REPO_DIR"
+
+# Checkout and pull the specific branch
+echo "🔄 Checking out branch '$BRANCH'..."
+git checkout "$BRANCH"
+git pull origin "$BRANCH"
 
 # Build docker image with dynamic base path
+echo "🏗️  Building Docker image..."
 docker build \
   --build-arg VITE_BASE_PATH="$VITE_BASE" \
   -t "app1:$BRANCH" .
@@ -53,30 +66,3 @@ echo "✅ $BRANCH deployed at http://<server-ip>:$PORT"
 
 # Register route in Caddy (path-based)
 bash "$BASE_DIR/caddy/update_routes.sh" "$BRANCH" "$PORT"
-
-# Set default route if branch is main
-if [ "$BRANCH" == "main" ]; then
-  echo "🌐 Setting 'main' as default catch-all route..."
-  
-  # Remove existing catch-all if present
-  ROUTES_COUNT=$(curl -s "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes" | jq 'length')
-  LAST_INDEX=$((ROUTES_COUNT - 1))
-  
-  IS_CATCHALL=$(curl -s "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes/$LAST_INDEX" | jq -r '.match[0].path[0]' 2>/dev/null || echo "")
-  
-  if [ "$IS_CATCHALL" == "/*" ]; then
-    echo "Removing old catch-all route..."
-    curl -s -X DELETE "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes/$LAST_INDEX" > /dev/null
-  fi
-  
-  curl -s -X POST "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes" \
-       -H "Content-Type: application/json" \
-       -d "{
-         \"match\": [{\"path\": [\"/*\"]}],
-         \"handle\": [{
-           \"handler\": \"reverse_proxy\",
-           \"upstreams\": [{\"dial\": \"127.0.0.1:$PORT\"}]
-         }]
-       }" > /dev/null
-  echo "✅ Default catch-all route now points to main ($PORT)"
-fi
