@@ -16,7 +16,14 @@ TMP_DIR="/tmp/$BRANCH"
 HASH=$(echo -n "$BRANCH" | md5sum | cut -c1-3)
 PORT=$((PORT_BASE + 10#$((0x$HASH % 1000)) ))
 
-echo "🚀 Deploying branch '$BRANCH' on port $PORT"
+# Set base path - main gets /, others get /branch/
+if [ "$BRANCH" == "main" ]; then
+  VITE_BASE="/"
+else
+  VITE_BASE="/$BRANCH/"
+fi
+
+echo "🚀 Deploying branch '$BRANCH' on port $PORT with base path '$VITE_BASE'"
 
 # Clean up old container (if exists)
 if docker ps -a --format '{{.Names}}' | grep -q "^app1_$BRANCH$"; then
@@ -31,8 +38,10 @@ git clone --depth=1 --branch "$BRANCH" "$REPO_URL" "$TMP_DIR"
 
 cd "$TMP_DIR"
 
-# Build docker image
-docker build -t "app1:$BRANCH" .
+# Build docker image with dynamic base path
+docker build \
+  --build-arg VITE_BASE_PATH="$VITE_BASE" \
+  -t "app1:$BRANCH" .
 
 # Run new container
 docker run -d \
@@ -47,8 +56,20 @@ bash "$BASE_DIR/caddy/update_routes.sh" "$BRANCH" "$PORT"
 
 # Set default route if branch is main
 if [ "$BRANCH" == "main" ]; then
-  echo "🌐 Setting 'main' as default route..."
-  curl -s -X PUT "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes/0" \
+  echo "🌐 Setting 'main' as default catch-all route..."
+  
+  # Remove existing catch-all if present
+  ROUTES_COUNT=$(curl -s "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes" | jq 'length')
+  LAST_INDEX=$((ROUTES_COUNT - 1))
+  
+  IS_CATCHALL=$(curl -s "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes/$LAST_INDEX" | jq -r '.match[0].path[0]' 2>/dev/null || echo "")
+  
+  if [ "$IS_CATCHALL" == "/*" ]; then
+    echo "Removing old catch-all route..."
+    curl -s -X DELETE "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes/$LAST_INDEX" > /dev/null
+  fi
+  
+  curl -s -X POST "http://127.0.0.1:2020/config/apps/http/servers/srv0/routes" \
        -H "Content-Type: application/json" \
        -d "{
          \"match\": [{\"path\": [\"/*\"]}],
@@ -57,5 +78,5 @@ if [ "$BRANCH" == "main" ]; then
            \"upstreams\": [{\"dial\": \"127.0.0.1:$PORT\"}]
          }]
        }" > /dev/null
-  echo "✅ Default route now points to main ($PORT)"
+  echo "✅ Default catch-all route now points to main ($PORT)"
 fi
