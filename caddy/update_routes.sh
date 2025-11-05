@@ -19,15 +19,18 @@ if [ -n "$EXISTS" ]; then
   exit 0
 fi
 
-# 🏗️ Create route JSON (path-based)
+# 🏗️ Create route JSON (path-based with stripping)
 ROUTE_JSON=$(cat <<EOF
 {
   "match": [
-    { "path": ["/$BRANCH/*"] }
+    { "path": ["/$BRANCH", "/$BRANCH/*"] }
   ],
   "handle": [
     {
       "handler": "reverse_proxy",
+      "rewrite": {
+        "strip_path_prefix": "/$BRANCH"
+      },
       "upstreams": [ { "dial": "127.0.0.1:$PORT" } ]
     }
   ]
